@@ -85,6 +85,30 @@ def enrichment_payload(outdir: pathlib.Path, filename: str,
     return (payload.get(key) or {}) if key else payload
 
 
+def _stream_jsonl(path: pathlib.Path):
+    """Yield rows one at a time instead of building a list.
+
+    For scanning a huge cache (the 250k-row award corpus) to pull one field, where
+    holding the whole parsed list is the memory peak a backfill was built to avoid.
+    """
+    path = pathlib.Path(path)
+    if not path.exists():
+        return
+    with path.open() as handle:
+        for line in handle:
+            if line.strip():
+                yield json.loads(line)
+
+
+def _count_lines(path: pathlib.Path) -> int:
+    """Row count without loading the file, and 0 for a file that was never written."""
+    path = pathlib.Path(path)
+    if not path.exists():
+        return 0
+    with path.open() as handle:
+        return sum(1 for line in handle if line.strip())
+
+
 def _read_jsonl(path: pathlib.Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []

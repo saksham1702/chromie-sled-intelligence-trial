@@ -758,8 +758,13 @@ def cmd_planetbids(args: argparse.Namespace) -> int:
                                     key=assemble.planetbids_bid_key)
     if bids_only:
         # Join dates onto rows collected before rows carried them. Same key, so the
-        # merge replaces each row with its own dated copy and drops nothing.
+        # merge replaces each row with its own dated copy and drops nothing. A cache
+        # that does not exist yet is left alone -- writing an empty file would make
+        # coverage read PlanetBids as harvested-and-empty rather than never harvested.
         for cache in ("planetbids_bidders.jsonl", "planetbids_declared_interest.jsonl"):
+            if not (outdir / cache).exists():
+                print(f"  {cache}: not harvested yet, nothing to date")
+                continue
             rows = assemble._read_jsonl(outdir / cache)
             dated, joined = pb.attach_bid_dates(rows, bids_all)
             assemble.merge_cache(outdir, cache, dated, key=assemble.bidder_key)
@@ -874,9 +879,24 @@ def cmd_backfill_awards(args: argparse.Namespace) -> int:
                     "slices_complete": coverage.get("complete"),
                     "slices": coverage.get("slices"),
                 },
-                "rows_on_disk": sum(1 for _ in (outdir / "awards.jsonl").open()),
+                "rows_on_disk": assemble._count_lines(outdir / "awards.jsonl"),
                 "collected_at": documents.utc_now()}, default=str) + "\n")
-    total = sum(1 for _ in (outdir / "awards.jsonl").open())
+    total = assemble._count_lines(outdir / "awards.jsonl")
+    # the file sitting next to the full corpus claimed a single month. Overwrite it with
+    # the sum across every window, so a direct reader gets the corpus total rather than
+    # the last month's. (unified_coverage already aggregates the per-window log; this
+    # fixes the standalone file too.)
+    windows_log = assemble._read_jsonl(log)
+    measured = [w.get("measured_this_run") or {} for w in windows_log]
+    if measured:
+        (outdir / "awards_coverage.json").write_text(json.dumps({
+            "rows_collected": sum(int(m.get("collected") or 0) for m in measured),
+            "rows_reported_by_portal": sum(int(m.get("reported") or 0) for m in measured),
+            "complete": all(m.get("slices_complete") for m in measured),
+            "rows_on_disk": total,
+            "note": (f"aggregated across {len(measured)} backfill window(s); "
+                     "per-window detail in " + log.name),
+        }, indent=1, default=str))
     print(f"\n{done} of {len(windows)} month(s) swept; {total} award rows on disk "
           f"(per-window verdicts in {log.name})")
     return 0
@@ -909,11 +929,12 @@ def sweep_awards(session, outdir: pathlib.Path, window_from: str, window_to: str
     # that name here clobbered it and the sweep died writing its own results -- on
     # the full-sweep branch only, so every --reuse-awards run passed and every real
     # one lost ninety minutes of throttled requests.
-    previous_awards = assemble._read_jsonl(outdir / "awards.jsonl")
-    if previous_awards:
-        methods = scprs.observed_acq_methods(previous_awards)
-        if methods:
-            axes.append(("acq_method", methods))
+    # Stream the corpus for its distinct acquisition methods rather than loading all
+    # 250k rows to read one field. observed_acq_methods keeps only the set, so a
+    # multi-month backfill no longer peaks at the parsed corpus this path avoids.
+    methods = scprs.observed_acq_methods(assemble._stream_jsonl(outdir / "awards.jsonl"))
+    if methods:
+        axes.append(("acq_method", methods))
     units = scprs.observed_business_units(assemble._read_jsonl(outdir / "events.jsonl"))
     if units:
         axes.append(("business_unit", units))
@@ -954,8 +975,9 @@ def sweep_awards(session, outdir: pathlib.Path, window_from: str, window_to: str
                       | {"rows_collected": len(result["rows"])})
     harvest_state.save(outdir, sweep_state)
     if done:
+        # Count without loading the corpus -- the whole point of not materialising it.
         print(f"        resumed: {len(done)} slice(s) already held, "
-              f"{len(previous_awards)} cached rows carried")
+              f"{assemble._count_lines(cached)} cached rows carried")
     coverage = assemble.award_sweep_coverage(slices)
     coverage_path = outdir / "awards_coverage.json"
     existing_coverage = (json.loads(coverage_path.read_text())

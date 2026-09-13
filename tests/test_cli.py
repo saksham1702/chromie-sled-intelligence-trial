@@ -556,6 +556,70 @@ class SavedContextTests(unittest.TestCase):
         self.assertEqual(_StubReader.last_kwargs.get("context_id"), "ctx-abc123")
 
 
+class BackfillRobustnessTests(unittest.TestCase):
+    """Regressions for review findings on the backfill path."""
+
+    def _args(self, tmp, **over):
+        import argparse
+        base = dict(output=tmp, delay=0, browser_headers=False,
+                    since="07/01/2026", until="08/31/2026", months=0)
+        base.update(over)
+        return argparse.Namespace(**base)
+
+    def test_every_month_failing_on_a_fresh_dir_returns_zero_not_crash(self) -> None:
+        # awards.jsonl is never written, yet the command counts it at the end.
+        from unittest import mock
+        def boom(session, outdir, start, end, *, say=print, load=True):
+            raise RuntimeError("portal down")
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(cli, "_session", lambda a: object()), \
+                    mock.patch.object(cli, "sweep_awards", boom):
+                self.assertEqual(cli.cmd_backfill_awards(self._args(tmp)), 0)
+            self.assertFalse((pathlib.Path(tmp) / "awards.jsonl").exists())
+
+    def test_backfill_writes_an_aggregate_coverage_not_the_last_month(self) -> None:
+        # awards_coverage.json next to the corpus must describe the whole corpus.
+        from unittest import mock
+        def sweep(session, outdir, start, end, *, say=print, load=True):
+            (pathlib.Path(outdir) / "awards.jsonl").write_text('{"a":1}\n')
+            return [], {"rows_collected": 100, "rows_reported_by_portal": 120,
+                        "complete": False}
+        with tempfile.TemporaryDirectory() as tmp:
+            # Let the command write its own per-month log (07 + 08 = two months);
+            # the aggregate must sum both, not report the last.
+            with mock.patch.object(cli, "_session", lambda a: object()), \
+                    mock.patch.object(cli, "sweep_awards", sweep):
+                cli.cmd_backfill_awards(self._args(tmp))
+            cov = json.loads((pathlib.Path(tmp) / "awards_coverage.json").read_text())
+        self.assertEqual(cov["rows_collected"], 200, "reported one month, not the sum")
+        self.assertEqual(cov["rows_reported_by_portal"], 240)
+        self.assertFalse(cov["complete"])
+
+
+class BidsOnlyFreshDirTests(unittest.TestCase):
+    def test_bids_only_on_a_fresh_dir_creates_no_empty_cache(self) -> None:
+        # An empty cache would make coverage read PlanetBids as harvested-and-empty.
+        import argparse
+        from unittest import mock
+        from sled_trial.net import browser as browser_mod
+        from sled_trial.sources.ca import planetbids as pb
+        from test_planetbids import BIDS
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(cli, "_session", lambda a: object()), \
+                    mock.patch.object(browser_mod, "PortalJsonReader", _StubReader), \
+                    mock.patch.object(pb, "list_bids",
+                                      lambda f, c, on_progress=None: (pb.parse_bids(BIDS), 1025)):
+                cli.cmd_planetbids(argparse.Namespace(
+                    output=tmp, delay=0, browser_headers=False, agency=["14424"],
+                    max_bids=None, local_browser=False, documents=False, bids_only=True))
+            out = pathlib.Path(tmp)
+            self.assertFalse((out / "planetbids_bidders.jsonl").exists(),
+                             "created an empty bidder cache on a list-only pass")
+            self.assertFalse((out / "planetbids_declared_interest.jsonl").exists())
+            self.assertTrue((out / "planetbids_bids.jsonl").exists(),
+                            "the solicitation list itself should still be written")
+
+
 class StreamingDedupeTests(unittest.TestCase):
     """A backfill must not hold the corpus it is collecting."""
 

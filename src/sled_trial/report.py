@@ -31,6 +31,26 @@ def _money(value: Any) -> str:
     return "not stated" if value is None else f"${value:,.2f}"
 
 
+def _window_span_days(windows: list[dict[str, Any]]) -> int | None:
+    """Total days the backfill windows cover, earliest `from` to latest `to`."""
+    import datetime as dt
+    lo = hi = None
+    for w in windows:
+        for key, edge in (("from", "lo"), ("to", "hi")):
+            v = w.get(key)
+            if not v:
+                continue
+            try:
+                d = dt.datetime.strptime(v, "%m/%d/%Y").date()
+            except ValueError:
+                continue
+            if edge == "lo" and (lo is None or d < lo):
+                lo = d
+            if edge == "hi" and (hi is None or d > hi):
+                hi = d
+    return (hi - lo).days + 1 if lo and hi else None
+
+
 def _history_depth(evaluation: dict[str, Any], backfill: list[dict[str, Any]]) -> list[str]:
     """Why per-vendor history is thin, said from the corpus rather than from memory.
 
@@ -42,11 +62,15 @@ def _history_depth(evaluation: dict[str, Any], backfill: list[dict[str, Any]]) -
     """
     corpus = evaluation.get("corpus") or {}
     median = corpus.get("awards_per_vendor_median")
-    span = corpus.get("observation_span_days_max")
     rows = (evaluation.get("baseline_comparison") or {}).get("history_rows")
     measured = [b.get("measured_this_run") or {} for b in backfill]
     collected = sum(int(m.get("collected") or 0) for m in measured)
     reported = sum(int(m.get("reported") or 0) for m in measured)
+    # The harvest window is the span the backfill actually covered, from its own window
+    # dates -- NOT observation_span_days_max, which is one vendor's longest first-to-last
+    # gap and understates the corpus. Falls back to None (prose omits the figure) when no
+    # backfill log is present.
+    span = _window_span_days([b.get("window") or {} for b in backfill])
 
     lines = ["1. **Per-vendor history is thin even when the window is not.**"]
     if median is not None and span and rows:

@@ -116,11 +116,15 @@ class GeneratedProseTests(unittest.TestCase):
 
     def test_history_depth_is_computed_from_the_corpus(self) -> None:
         # Said the cap left vendors "a handful of prior awards". On twelve months the
-        # cap costs under a tenth of rows and the median vendor still holds one.
+        # cap costs under a tenth of rows and the median vendor still holds one. The
+        # window comes from the backfill's own window dates, not observation_span_days_max
+        # (a per-vendor gap that understates the corpus).
         text = self._report_with_corpus(1, 356, 250986, [
-            {"measured_this_run": {"collected": 100, "reported": 110}},
-            {"measured_this_run": {"collected": 900, "reported": 990}}])
-        self.assertIn("356-day window of 250,986 awards", text)
+            {"window": {"from": "09/11/2025", "to": "09/30/2025"},
+             "measured_this_run": {"collected": 100, "reported": 110}},
+            {"window": {"from": "08/01/2026", "to": "09/10/2026"},
+             "measured_this_run": {"collected": 900, "reported": 990}}])
+        self.assertIn("365-day window of 250,986 awards", text)
         self.assertIn("median vendor", text)
         self.assertIn("holds 1;", text)
         self.assertIn("costs 9.1%", text)

@@ -179,5 +179,20 @@ class BackfillAggregationTests(unittest.TestCase):
                      if s["source_key"] == "caleprocure_scprs"][0]
         self.assertEqual(scprs["collected"], 4767)
 
+
+class StreamHelperTests(unittest.TestCase):
+    def test_stream_jsonl_yields_without_a_list_and_tolerates_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            p = pathlib.Path(tmp) / "x.jsonl"
+            p.write_text('{"a":1}\n\n{"a":2}\n')
+            self.assertEqual([r["a"] for r in assemble._stream_jsonl(p)], [1, 2])
+            self.assertEqual(list(assemble._stream_jsonl(pathlib.Path(tmp) / "no.jsonl")), [])
+
+    def test_count_lines_is_zero_for_a_missing_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(assemble._count_lines(pathlib.Path(tmp) / "no.jsonl"), 0)
+            p = pathlib.Path(tmp) / "x.jsonl"; p.write_text('a\n\nb\n')
+            self.assertEqual(assemble._count_lines(p), 2)
+
 if __name__ == "__main__":
     unittest.main()
