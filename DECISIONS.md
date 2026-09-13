@@ -7,16 +7,20 @@ shaped the way it is. Organised by subject rather than by date.
 
 ## 1. The central question: who bid?
 
-**Cal eProcure does not publish bidder lists, and this is now tested rather than
-inferred.** The Response Bid Inquiry component was recorded as login-gated. It is not: it
-answers anonymously over plain HTTP. Signed in as a registered supplier it returns the same
-event grid, with no respondent column and no respondent field anywhere in the page — and
-signing in actively *breaks* the event detail the pipeline depends on, which is pinned to
-the generic Default Bidder id. This is PeopleSoft Strategic Sourcing behaving correctly: a
-bidder inquires about its own responses, not anyone else's. The pipeline stays anonymous.
+**Verdict: Cal eProcure does not publish who bid. We confirmed it two ways.** The first
+pass assumed the Response Bid Inquiry page was behind a login and stopped there. It is not
+behind a login — it answers anyone over plain HTTP — so we actually looked. Two tests:
 
-**California publishes bidder lists agency by agency, and overwhelmingly on one platform.**
-That is the finding the work turned on:
+1. **Anonymous.** The page returns an event grid with no bidder column and no bidder field
+   anywhere in it.
+2. **Signed in as a real supplier.** Same grid, still no bidders — and logging in makes it
+   *worse*: the event detail the pipeline reads breaks, because the page only ever shows a
+   supplier its own responses, never anyone else's.
+
+So no login gets us bidder names here. The pipeline stays anonymous, and the search for
+bidders moved to the sources that do publish them (below).
+
+**Bidder names live agency by agency, and mostly on one platform — PlanetBids.**
 
 | Surface | What it gives | Scale |
 | --- | --- | --- |
@@ -37,8 +41,8 @@ opportunity feed.
 
 Caltrans contract numbers **are** Cal eProcure event ids under business unit 2660 — the
 id space and format match exactly (`01A6671` in the feed, `01A6607` from the results). But
-**the join does not fire on a snapshot, and measuring it is how we found out**: 0 of 75
-harvested Caltrans solicitations match any of the 80 open BU-2660 events. Cal eProcure lists
+so a snapshot cannot join them: **0 of 75 harvested Caltrans solicitations match any of
+the 80 open BU-2660 events.** Cal eProcure lists
 open events; Caltrans publishes results for events that have already closed. Same ids,
 disjoint in time. The join is only possible if an event was captured while open and kept, so
 this is a harvesting-cadence problem rather than a matching problem, and no name
@@ -86,8 +90,8 @@ technical one and is recorded against the source.
 **CSLB master register — a ceiling, not flakiness.** The contractor register is free and needs
 no login, and a licence number is the one identifier that crosses the bidder sources. The
 download is cut short server-side at roughly 20MB every run. Twelve attempts plateaued between
-48,000 and 65,000 rows against a register of about 290,000, and retrying harder was measured
-rather than assumed: best of four was 64,767 rows, best of twelve was 59,873. What is held is a
+48,000 and 65,000 rows against a register of about 290,000, and retrying more did not help:
+best of four attempts was 64,767 rows, best of twelve was 59,873. What is held is a
 front slice ordered by licence number, so it is biased to older licences rather than a sample.
 The by-classification route is the remaining option and its form does not yield to a
 server-side post.
