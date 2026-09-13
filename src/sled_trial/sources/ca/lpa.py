@@ -8,9 +8,10 @@ the same supplier id SCPRS awards carry, and `CNTRCT_ID`, which is the same valu
 rows carry as `lpa_contract`. Every other vendor surface here -- the supplier search
 included -- forces a name match and inherits its errors. This one does not.
 
-**It populates a prediction feature that has always scored zero.** `predict` scores
-"presence on a statewide contract or purchasing vehicle" and nothing has ever supplied
-it, so the term has been dead weight in every evaluation run to date.
+**It attaches to profiles, not to the ranking.** `predict` scores "presence on a statewide
+contract or purchasing vehicle" from `lpa_contract` on the award rows and only when the
+opportunity names a vehicle; the demonstrated one does not, which is why that term has
+scored zero. This surface adds a vendor's current standing to its profile.
 
 A contract is not an award: holding a vehicle means a department *may* buy without
 re-competing, not that anyone has. The rows carry their validity window so an expired

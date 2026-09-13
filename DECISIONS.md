@@ -143,11 +143,12 @@ advance under automation, so a wider query must be sliced rather than paged. Dat
 alone left the reference window at 1,252 rows against 3,789 reported, with 6 of 7 single-day
 slices still capped. Two further axes now cut a capped day — acquisition method first, then
 business unit — and completeness is measured against the portal's own total rather than
-assumed: **4,767 rows collected against 4,922 reported (96.9%)** over 553 slices, with the 6
-residual slices that still exceed the cap after both axes named in
-`build/awards_coverage.json`. The award corpus on disk is larger than one sweep's yield --
-4,892 rows -- because it is a union across runs, and the verdict states both so the two are
-never read as the same number.
+assumed: **4,767 rows collected against 4,922 reported (96.9%)** over 553 slices on the
+reference window, with the residual slices that still exceed the cap named in the verdict
+each sweep writes -- `build/awards_coverage.json` for a single window, one line per month in
+`build/awards_backfill_coverage.jsonl` for the year (the twelve-month figures are in §8).
+The award corpus on disk is always larger than one sweep's yield because it is a union
+across runs, and every verdict states both so the two are never read as the same number.
 
 An earlier version of this paragraph quoted 4,769 of 4,924 from a sweep that died before
 writing its rows, next to an awards.jsonl holding 4,288. The completeness figure was right;
@@ -176,9 +177,11 @@ cite a licence in free text, so those are extracted.
 **Leveraged Procurement Agreements join on an identifier, not a name.** The LPA search
 publishes the same `supplier_id` the award registry carries, so statewide-contract standing
 attaches with no confidence ceiling and no ambiguity case — unlike every other vendor join
-here. Measured: 379 vehicles across 119 of 699 corpus suppliers, 378 currently in force. This
-also supplies the "presence on a statewide contract or purchasing vehicle" prediction
-feature, which had scored zero in every run because nothing populated it.
+here. Measured: 379 vehicles across 119 of 699 corpus suppliers, 378 currently in force. It
+attaches to profiles only: the "presence on a statewide contract or purchasing vehicle"
+prediction term reads `lpa_contract` off the award rows themselves and fires only when the
+opportunity names a vehicle, which the demonstrated one does not — that, not an empty
+source, is why the term has scored zero.
 
 **Bid-results pages carry no id**, so bidder names are resolved against SCPRS by exact
 normalised match. One query returns both the identity and that vendor's award history, so the

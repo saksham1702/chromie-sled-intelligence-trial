@@ -316,13 +316,12 @@ def list_bids(fetch_json: Callable[[str], Any], cid: int | str, *,
     return bids, reported
 
 
-# What a bidder or planholder row carries about the solicitation it sits on. These were
-# fetched on every run and discarded: rows kept only the portal and bid id, so the
-# corpus could not say how many months of bidder history it held.
-BID_FIELDS = ("solicitation_title", "issue_date", "due_date", "stage")
-
-
 def _bid_fields(bid: dict[str, Any]) -> dict[str, Any]:
+    """What a bidder or planholder row carries about the solicitation it sits on.
+
+    These were fetched on every run and discarded: rows kept only the portal and bid id,
+    so the corpus could not say how many months of bidder history it held.
+    """
     return {"solicitation_title": bid.get("title"), "issue_date": bid.get("issue_date"),
             "due_date": bid.get("due_date"), "stage": bid.get("stage")}
 

@@ -7,6 +7,6 @@ data/raw/
 *.pyc
 
 *.egg-info/
-build_docs/
+.DS_Store
 PLAN.txt
 tasks/

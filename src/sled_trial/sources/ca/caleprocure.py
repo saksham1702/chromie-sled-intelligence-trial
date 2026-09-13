@@ -1,7 +1,7 @@
 """Cal eProcure adapter: PeopleSoft components behind caleprocure.ca.gov.
 
 Target the .GBL components directly. The /pages/*.aspx wrapper pages are an InFlight
-overlay that renders client-side and carries no data -- see DECISIONS.md 2026-09-07.
+overlay that renders client-side and carries no data -- see DECISIONS.md §2.
 """
 from __future__ import annotations
 

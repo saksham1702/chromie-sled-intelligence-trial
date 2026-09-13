@@ -142,13 +142,15 @@ def build_profile(supplier_id: str, rows: list[dict[str, str]], *,
         "identity_confidence": "high" if supplier_id else "unresolved",
 
         "awards_observed": len(rows),
-        # Deliberately absent: SCPRS records awards only. There is no public losing-bidder
-        # data in California, so bid totals and win rates are not computable and are not
-        # invented. See DECISIONS.md 2026-09-07.
+        # Deliberately absent: SCPRS records awards only, so bid totals and win rates are
+        # not computable from it and are not invented. `attach_bid_history` fills them in
+        # where an agency surface named the full bidder field. See DECISIONS.md §5, "Win
+        # rates, except where a full field was observed".
         "bids_observed": None,
         "losses_observed": None,
         "win_rate": None,
-        "win_rate_note": "not computable: California publishes no losing-bidder data",
+        "win_rate_note": ("not computable: the award registry carries no losing-bidder data "
+                          "and no public source named the full bidder field for this vendor"),
 
         "amount_stats": {
             "rows_with_parseable_amount": len(amounts),
@@ -452,9 +454,9 @@ def attach_bid_history(profiles: list[dict[str, Any]],
     """Attach observed wins and losses to profiles in place. Returns a join summary.
 
     SCPRS records who won and is silent on who lost, which is why `build_profile` leaves
-    `win_rate` null. A bidder row that names the whole field -- currently only the Caltrans
-    bid-results page -- supplies the missing half: rank 1 is a win, any lower rank is an
-    observed loss against a named competitor.
+    `win_rate` null. A bidder row that names the whole field -- Caltrans bid results, SF
+    Public Works tabulations, PlanetBids portals -- supplies the missing half: rank 1 is a
+    win, any lower rank is an observed loss against a named competitor.
 
     Two honest limits, both carried in `win_rate_basis` rather than left to the reader:
 
@@ -598,9 +600,10 @@ def attach_vehicles(profiles: list[dict[str, Any]],
     same supplier id the award registry uses -- so there is no confidence ceiling and no
     ambiguity case to handle.
 
-    This is the evidence behind the "presence on a statewide contract or purchasing
-    vehicle" prediction feature, which has scored zero in every run to date because
-    nothing supplied it.
+    Profiles only. Prediction's "presence on a statewide contract or purchasing vehicle"
+    term reads `lpa_contract` off the award rows themselves and fires only when the
+    opportunity names a vehicle, which the demonstrated one does not -- so this join
+    describes standing and does not move the ranking.
     """
     by_supplier: dict[str, list[dict[str, Any]]] = collections.defaultdict(list)
     for row in vehicles or []:

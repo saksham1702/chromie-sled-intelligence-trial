@@ -4,6 +4,6 @@ Statewide Cal eProcure components (`caleprocure`, `scprs`, `supplier_search`, `l
 `vendor_ads`), state open data (`openfiscal`), the contractor register (`cslb`), the
 surfaces that publish a full bidder field (`caltrans`, `sfpublicworks`, `planetbids`), and
 two opportunity-only feeds (`csu`, `sacramento`). A second state gets a sibling package;
-nothing here is imported by name from outside the state's own adapters and the source
-registry.
+only `cli.py` imports these by name -- the assembler, exporter and report reach them
+through `BIDDER_SOURCES` and the source registry.
 """

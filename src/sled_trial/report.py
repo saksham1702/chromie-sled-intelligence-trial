@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import collections
 import json
+import math
 import pathlib
+import statistics
 from typing import Any
 
 BUILD = pathlib.Path("build")
@@ -63,11 +65,25 @@ def _history_depth(evaluation: dict[str, Any], backfill: list[dict[str, Any]]) -
     return lines
 
 
-def _gap(model: float | None, baseline: float | None) -> str:
+def _gap(model: float | None, baseline: float | None) -> float | None:
     """The distance between model and baseline, for prose that must not go stale."""
     if model is None or baseline is None:
-        return "gap"
-    return f"{abs(float(model) - float(baseline)):.4f}"
+        return None
+    return abs(float(model) - float(baseline))
+
+
+def _ci95(evaluation: dict[str, Any]) -> float | None:
+    """Half-width of the 95% interval on mean precision@3, from the per-event scores.
+
+    Was a literal "plus or minus 0.03 to 0.04", measured on a one-week window, and it
+    outlived that window: on twelve months the gap grew past the interval and the
+    paragraph went on calling the lift undetermined after DECISIONS.md had stopped.
+    """
+    scores = [float(e["precision_at_3"]) for e in evaluation.get("per_event") or []
+              if e.get("precision_at_3") is not None]
+    if len(scores) < 2:
+        return None
+    return 1.96 * statistics.stdev(scores) / math.sqrt(len(scores))
 
 
 def _fmt(value: Any) -> str:
@@ -220,17 +236,35 @@ def generate() -> str:
             w("")
             # Derived, never written down. Two lift figures used to be hardcoded here
             # from particular runs; they outlived the corpus that produced them and the
-            # report went on quoting them next to numbers that disagreed.
+            # report went on quoting them next to numbers that disagreed. The interval
+            # went the same way, so it is computed from the per-event scores too.
             gap = _gap(evaluation.get("precision_at_3"),
                        comparison.get("best_baseline_precision_at_3"))
-            w("**Read the lift as undetermined, not as a result.** Most events score exactly")
-            w("zero, so the per-event spread swamps the mean: at this sample size the 95%")
-            w("confidence interval on precision@3 is roughly plus or minus 0.03 to 0.04,")
-            w(f"wider than the {gap} that separates the model from the baseline. The lift")
-            w("has swung either side of 1.0 as the award window and the corpus changed,")
-            w("with the ranking itself untouched. This evaluation is too small and too")
-            w("zero-heavy to say whether the ranking beats counting past wins. Quoting")
-            w("the lift without that caveat would be the misleading choice.")
+            ci = _ci95(evaluation)
+            per_event = evaluation.get("per_event") or []
+            zeros = sum(1 for e in per_event if not e.get("precision_at_3"))
+            gap_text = f"{gap:.4f}" if gap is not None else "gap"
+            if ci is not None and gap is not None and gap > ci:
+                w("**Distinguishable from the baseline, and still weak.** The 95% confidence")
+                w(f"interval on precision@3 is plus or minus {ci:.4f} at this sample size,")
+                w(f"narrower than the {gap_text} that separates the model from the best")
+                w(f"trivial baseline, so the ranking beats counting past wins here. But {zeros}")
+                w(f"of {len(per_event)} events score exactly zero, so it is measurably better")
+                w("than nothing and still misses most of the time. Quoting the lift without")
+                w("that caveat would be the misleading choice.")
+            else:
+                w("**Read the lift as undetermined, not as a result.** Most events score exactly")
+                w("zero, so the per-event spread swamps the mean: at this sample size the 95%")
+                if ci is not None:
+                    w(f"confidence interval on precision@3 is plus or minus {ci:.4f},")
+                    w(f"wider than the {gap_text} that separates the model from the baseline. The lift")
+                else:
+                    w("confidence interval on precision@3 cannot be computed without the per-event")
+                    w(f"scores, so the {gap_text} separating model from baseline is untested. The lift")
+                w("has swung either side of 1.0 as the award window and the corpus changed,")
+                w("with the ranking itself untouched. This evaluation is too small and too")
+                w("zero-heavy to say whether the ranking beats counting past wins. Quoting")
+                w("the lift without that caveat would be the misleading choice.")
         w("")
     w("These are weak numbers and are reported unadjusted. Two structural causes, both about")
     w("the data rather than the ranking:")
@@ -372,9 +406,16 @@ def generate() -> str:
     w("   names a participant against a specific solicitation. Sweeping every active event")
     w("   for one would build the first genuinely solicitation-level bidder dataset in this")
     w("   market.")
+    ads = _jsonl("vendor_ads_declared_interest.jsonl")
     w("2. **Mine the vendor-ad board.** A `Prime Seeking Sub` advertisement is a company")
     w("   publicly declaring intent to bid as prime on a named solicitation — the strongest")
-    w("   forward-looking signal California exposes. It is reachable and not yet harvested.")
+    if ads:
+        intending = sum(1 for a in ads if a.get("intends_to_bid"))
+        w(f"   forward-looking signal California exposes. {_fmt(len(ads))} ads are harvested")
+        w(f"   ({_fmt(intending)} prime-seeking-sub) and exported as `interested_vendor`; the")
+        w("   open step is resolving the free-text company name to a supplier id.")
+    else:
+        w("   forward-looking signal California exposes. It is reachable and not yet harvested.")
     w("3. **Deepen history per vendor, not per day.** The 200-row cap makes date-sliced")
     w("   backfill inefficient, while a per-supplier query returns that vendor's record")
     w("   directly. Once a candidate set exists, enrich it vendor by vendor.")

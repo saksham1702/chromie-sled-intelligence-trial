@@ -148,8 +148,31 @@ class GeneratedProseTests(unittest.TestCase):
             with self.subTest(stale=stale):
                 self.assertNotIn(stale, text)
 
-if __name__ == "__main__":
-    unittest.main()
+    def _report_with_per_event(self, precision, baseline, scores):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = pathlib.Path(tmp)
+            (out / "evaluation.json").write_text(json.dumps({
+                "precision_at_3": precision, "precision_at_5": 0.1, "coverage": 0.2,
+                "per_event": [{"precision_at_3": s} for s in scores],
+                "baseline_comparison": {"best_baseline_precision_at_3": baseline,
+                                        "lift_over_best_baseline": precision / baseline}}))
+            with mock.patch.object(report, "BUILD", out):
+                return re.sub(r"\s+", " ", report.generate())
+
+    def test_the_interval_is_computed_and_decides_the_verdict(self) -> None:
+        # Was a literal "0.03 to 0.04" from a one-week window. On twelve months the gap
+        # (0.0758) exceeded the interval (0.049) and the prose still called it "wider".
+        scores = [1.0] * 30 + [0.0] * 70                 # mean 0.30, 95% CI 0.0903
+        with self.subTest(case="gap wider than the interval"):
+            text = self._report_with_per_event(0.30, 0.05, scores)
+            self.assertIn("Distinguishable from the baseline", text)
+            self.assertIn("plus or minus 0.0903", text)
+            self.assertIn("70 of 100 events score exactly zero", text)
+        with self.subTest(case="gap inside the interval"):
+            text = self._report_with_per_event(0.30, 0.28, scores)
+            self.assertIn("undetermined", text)
+            self.assertIn("plus or minus 0.0903, wider than the 0.0200", text)
+        self.assertNotIn("0.03 to 0.04", text)
 
 
 class TeamingRationaleTests(unittest.TestCase):
@@ -240,3 +263,7 @@ class ReviewQueueTests(unittest.TestCase):
             with mock.patch.object(report, "BUILD", pathlib.Path(tmp)):
                 text = report.generate()
         self.assertIn("| Review-queue items | 2 |", text)
+
+
+if __name__ == "__main__":
+    unittest.main()

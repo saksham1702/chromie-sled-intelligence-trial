@@ -212,6 +212,7 @@ def _opportunity_intelligence(
     opportunity: dict[str, Any], *, known: list[dict[str, Any]],
     prediction: dict[str, Any], lineage_result: dict[str, Any],
     documents_manifest: list[dict[str, Any]],
+    declared: Iterable[dict[str, Any]] = (),
 ) -> dict[str, Any]:
     """Assemble the opportunity debrief: facts, predictions and gaps kept separate."""
     retrieved = [d for d in documents_manifest if d.get("download_status") == "downloaded"]
@@ -221,6 +222,10 @@ def _opportunity_intelligence(
     target = (opportunity.get("business_unit"), opportunity.get("event_id"))
     here = [row for row in known
             if (row.get("business_unit"), row.get("event_id")) == target]
+    # Said from the harvested rows, not from memory: this line claimed no command ran the
+    # vendor-ad adapter after `vendor-ads` had been reading the whole feed for a day.
+    ads = [r for r in declared if r.get("source_key") == "caleprocure_vendor_ads"]
+    ads_here = [r for r in ads if (r.get("business_unit"), r.get("event_id")) == target]
     return {
         "generated_at": documents.utc_now(),
         "opportunity": {k: v for k, v in opportunity.items() if not k.startswith("_")},
@@ -264,12 +269,22 @@ def _opportunity_intelligence(
             "the response bid inquiry surface exposes no respondent fields, anonymously or "
             "with a supplier login (tested 2026-09-10)",
             "no deterministic join exists from this solicitation to its eventual award",
-            "vendor ads for this event were not harvested: the adapter exists but no "
-            "command runs it yet",
+            _vendor_ad_gap(ads, ads_here),
         ],
     }
 
 
+
+
+def _vendor_ad_gap(ads: list[dict[str, Any]], ads_here: list[dict[str, Any]]) -> str:
+    """One sentence on the vendor-ad board, from what was harvested rather than assumed."""
+    if not ads:
+        return "vendor ads were not harvested for this run; `vendor-ads` reads the ad board"
+    if not ads_here:
+        return (f"no vendor ad names this event: {len(ads)} ads were harvested across the "
+                "feed and none is posted here")
+    return (f"{len(ads_here)} vendor ad(s) name this event out of {len(ads)} harvested; "
+            "declared interest, never a bid")
 
 
 def enumeration_failure_row(business_unit: str, event_id: str,
@@ -560,9 +575,6 @@ COVERAGE_SOURCES = (
                    ("vendor_ads_declared_interest.jsonl",), "_cov_vendor_ads"),
     CoverageSource("caleprocure_supplier_search", "supplier_locations_coverage.json",
                    ("supplier_locations.json",), "_cov_suppliers"),
-    # Absolute under the repo, not relative to --output. The register is written by
-    # `cslb` into data/raw/registries regardless of where analyze writes, so resolving
-    # it from outdir reported an empty source for any output directory but build/.
     # Resolved against `registry_root`, not against --output. The register is written
     # by `cslb` into data/raw/registries wherever analyze happens to write, so treating
     # it as relative to outdir reported the source as empty for any output directory
@@ -711,6 +723,22 @@ def unified_coverage(outdir: pathlib.Path,
                     cov = json.loads(path.read_text())
                 except Exception:
                     cov = None
+        # A backfill runs many windows and writes a per-window log; the single
+        # coverage file holds only the last one. Aggregating the log is the only
+        # honest total for a multi-window sweep -- without it coverage.json reported
+        # SCPRS as "0 collected, complete" beside a 252k-row corpus 9% short of the
+        # portal. Prefer the log where it exists; fall back to the single file.
+        if source.source_key == "caleprocure_scprs":
+            log = _read_jsonl(outdir / "awards_backfill_coverage.jsonl")
+            windows = [w.get("measured_this_run") or {} for w in log]
+            if any(windows):
+                cov = {
+                    "rows_collected": sum(int(w.get("collected") or 0) for w in windows),
+                    "rows_reported_by_portal": sum(int(w.get("reported") or 0)
+                                                   for w in windows),
+                    "complete": all(w.get("slices_complete") for w in windows),
+                    "note": f"aggregated across {len(windows)} backfill window(s)",
+                }
         root = pathlib.Path(registry_root) if source.registry else outdir
         caches = [root / c for c in source.caches]
         rows = sum(_count_rows(c) for c in caches)

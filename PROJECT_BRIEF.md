@@ -3,7 +3,7 @@
 > **Superseded by `README.md` for this trial.** This brief describes generic multi-portal
 > opportunity normalisation; the README describes California bidder and teaming
 > intelligence, and carries the rubric the work is scored against. Where they conflict the
-> README wins. Reasoning in `DECISIONS.md`, entry of 2026-09-07 "Target spec is README.md".
+> README wins. Reasoning in `DECISIONS.md` §7, "README.md is the target spec".
 > Left in place unedited otherwise, since it came with the repository.
 
 

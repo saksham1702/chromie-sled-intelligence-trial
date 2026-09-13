@@ -1099,7 +1099,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     # 7. Primes. The date sweep gives the median vendor one award, so almost nobody clears
     # the prime rule on it -- `backfill-primes` deepens exactly the eligible set, and that
     # corpus is used when it exists. Uniform depth within the eligible set is what makes
-    # the ranking meaningful; see DECISIONS.md 2026-09-08.
+    # the ranking meaningful; see DECISIONS.md §5, "Corpus depth must be uniform".
     print("  [7/9] prime candidates")
     prime_corpus, prime_build = awards, predict.SWEEP
     enriched_path = outdir / "awards_prime_enriched.jsonl"
@@ -1125,7 +1125,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
 
     intelligence = _opportunity_intelligence(
         opportunity, known=known, prediction=prediction,
-        lineage_result=lineage_result, documents_manifest=manifest)
+        lineage_result=lineage_result, documents_manifest=manifest, declared=declared)
     intelligence["target_listing"] = listing
     (outdir / "opportunity_intelligence.json").write_text(
         json.dumps(intelligence, indent=1, default=str))

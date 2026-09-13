@@ -136,5 +136,48 @@ class RegistryRootTests(unittest.TestCase):
         self.assertTrue(cslb["harvested"],
                         "the register exists but coverage reported the source empty")
 
+
+class BackfillAggregationTests(unittest.TestCase):
+    """A multi-window backfill's coverage is the sum of its windows, not the last one.
+
+    coverage.json read the single-window awards_coverage.json and reported SCPRS as
+    "0 collected, complete" beside a 252k-row corpus 9% short of the portal.
+    """
+
+    def test_scprs_coverage_aggregates_the_backfill_log(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            out = pathlib.Path(tmp)
+            (out / "awards.jsonl").write_text("")
+            # The stale single-window file the reader used to trust.
+            (out / "awards_coverage.json").write_text(json.dumps(
+                {"rows_collected": 8137, "rows_reported_by_portal": 8137,
+                 "complete": True}))
+            (out / "awards_backfill_coverage.jsonl").write_text("\n".join(json.dumps(w) for w in [
+                {"window": {"from": "07/01/2026", "to": "07/31/2026"},
+                 "measured_this_run": {"collected": 100, "reported": 110,
+                                       "slices_complete": False}},
+                {"window": {"from": "08/01/2026", "to": "08/31/2026"},
+                 "measured_this_run": {"collected": 900, "reported": 900,
+                                       "slices_complete": True}}]))
+            cov = assemble.unified_coverage(out, registry_root=out / "reg")
+            scprs = [s for s in cov["sources"]
+                     if s["source_key"] == "caleprocure_scprs"][0]
+        self.assertEqual(scprs["collected"], 1000, "did not sum the windows")
+        self.assertEqual(scprs["reported_by_portal"], 1010)
+        self.assertFalse(scprs["complete"], "one window was short; not complete")
+        self.assertIn("caleprocure_scprs", cov["sources_short_of_portal_total"])
+
+    def test_no_backfill_log_falls_back_to_the_single_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            out = pathlib.Path(tmp)
+            (out / "awards.jsonl").write_text("")
+            (out / "awards_coverage.json").write_text(json.dumps(
+                {"rows_collected": 4767, "rows_reported_by_portal": 4922,
+                 "complete": False}))
+            cov = assemble.unified_coverage(out, registry_root=out / "reg")
+            scprs = [s for s in cov["sources"]
+                     if s["source_key"] == "caleprocure_scprs"][0]
+        self.assertEqual(scprs["collected"], 4767)
+
 if __name__ == "__main__":
     unittest.main()
